@@ -90,7 +90,7 @@ def execute(actionSet):
             pass
 
 
-def networking(port, hosts):
+def networkInit(port, hosts):
     hostNames = []
 
     for host in hosts:
@@ -105,6 +105,9 @@ def networking(port, hosts):
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         s.connect(host)
         sockets.append(s)
+
+def networkSendString():
+    
 
 
 if __name__ == "__main__":
