@@ -1,11 +1,18 @@
 # A typical Rakefile
 
-PORT  = 3000
-HOSTS = localhost
+PORT  = 6238
+HOSTS = hostname1 hostname2 hostname3:6333
 
 actionset1:
     echo starting actionset1
-    ls -la
+    remote-cc -c program.c
+        requires program.c program.h allfunctions.h
+    remote-cc -c square.c
+        requires square.c allfunctions.h
+    remote-cc -c cube.c
+        requires cube.c allfunctions.h
 
 actionset2:
     echo starting actionset2
+    remote-cc -o program program.o square.o cube.o
+        requires program.o square.o cube.o
