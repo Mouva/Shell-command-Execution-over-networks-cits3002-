@@ -2,7 +2,7 @@
 # 22989775, Oliver Lynch
 
 import sys, subprocess
-import networkEpicTime as net
+import networkstuff as net
 
 # Ensure python 3.10 and above
 MIN_PYTHON = (3, 10)
