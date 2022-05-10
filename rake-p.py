@@ -107,7 +107,7 @@ def networkInit(port, hosts):
         sockets.append(s)
 
 def networkSendString():
-    
+    pass
 
 
 if __name__ == "__main__":
