@@ -1,6 +1,8 @@
 # 22973676, Adrian Bedford
 # 22989775, Oliver Lynch
 
+#Query remote hosts for resources and send action to lowest costing one !!
+
 import sys, subprocess
 import networkstuff as net
 

@@ -5,7 +5,8 @@
 # Store any action outputs, report action failures
 # Networking, checksum (hashlib)
 
-import re, sys, subprocess, socket
+import re, sys, subprocess
+import networkstuff as net 
 
 # Ensure python 3.10 and above
 MIN_PYTHON = (3, 10)
