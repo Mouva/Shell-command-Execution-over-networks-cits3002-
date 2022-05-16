@@ -5,6 +5,12 @@
 # Header 193
 # ----------------
 # \x01
+# \x01
+# \x01
+# \x01
+# \x01
+# \x01
+# \x01
 # Control 1
 # Specifies packet type
 # - 0 for command
@@ -16,14 +22,13 @@
 
 # Data, the rest
 
-# \x04
-
-import socket, os
+import socket, os, select, queue
 
 socks = []
-HEADER_SIZE = 64 + 64 + 64 + 2
+readqueue = []
+HEADER_SIZE = 7 + 1 + 64 + 64 + 64
 PACKET_SIZE = 1024
-FOOTER_SIZE = 1
+FOOTER_SIZE = 0
 DATA_SIZE = PACKET_SIZE - HEADER_SIZE - FOOTER_SIZE
 
 
@@ -37,15 +42,14 @@ class packet:
         self.data = bytes(data)
 
     def asBytes(self):
-        datasize = [1, 1, 64, 64, 64, DATA_SIZE, 1]
+        datasize = [7, 1, 64, 64, 64, DATA_SIZE]
         data = [
-            chr(1),
+            chr(1) * 7,
             self.control,
             self.filename,
             self.filesize,
             self.offset,
             self.data,
-            chr(1),
         ]
 
         pack = b""
@@ -60,18 +64,16 @@ class packet:
 
     @staticmethod
     def unpacket(pack):
-        filesize = int.from_bytes(pack[66:130], "little")
-        offset = int.from_bytes(pack[130:194], "little")
+        filesize = int.from_bytes(pack[72:136], "little")
+        offset = int.from_bytes(pack[137:201], "little")
 
-        print()
-
-        return (
-            pack[1],
-            pack[2:66].decode("utf-8").strip("\x00"),
+        return packet(
+            pack[7],
+            pack[8:72].decode("utf-8").strip("\x00"),
             filesize,
             offset,
             pack[
-                194 : HEADER_SIZE + (filesize - offset) - 1
+                202 : HEADER_SIZE + (filesize - offset) - 1
             ],  # Trim any excess nulls from data
         )
 
@@ -117,6 +119,9 @@ def start_server(host="", port=6666):
     s.listen(10)
     c, address = s.accept()
 
+    socks.append(s)
+    readqueue.append(queue.Queue(maxsize=(PACKET_SIZE * 2) - 1))
+
 
 def start_client(hosts, port=6666):
     hostNames = []
@@ -134,11 +139,33 @@ def start_client(hosts, port=6666):
         s.settimeout(10)
         s.connect(host)
         socks.append(s)
+        readqueue.append(queue.Queue(maxsize=(PACKET_SIZE * 2) - 1))
 
 
 def poll(callback):
-    for sock in socks:
-        while True:
-            recv = packet.unpacket(sock.recv(PACKET_SIZE))
 
-        callback(recv)
+    # for sock in socks
+    read, write, exception = select.select(socks, [], [])
+
+    for sock, rq in zip(socks, readqueue):
+        if sock in read:
+
+            for pack in buffer(sock):
+                callback(packet.unpacket(pack))
+
+
+def buffer(sock):
+    buf = sock.recv(PACKET_SIZE)
+    while True:
+        if b"\x01" in buf:
+            pos = buf.index(b"\x01" * 7)
+            if pos + PACKET_SIZE <= len(buffer):
+                yield buf[pos : pos + PACKET_SIZE]
+            else:
+                more = sock.recv(PACKET_SIZE)
+                if not more:
+                    break
+                else:
+                    buf += more
+    if buf:
+        yield buf
