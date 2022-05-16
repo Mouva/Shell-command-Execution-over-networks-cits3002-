@@ -1,7 +1,8 @@
 import networkstuff as net
 
+import time
 
-net.start_client(["localhost"])
+socks = net.start_client(["localhost"])
 
 
 def incomingPacket(packet):
@@ -10,9 +11,22 @@ def incomingPacket(packet):
 
 sendFile = 1
 
-while True:
-    net.poll(incomingPacket)
+try:
+    while True:
+        net.poll(incomingPacket)
 
-    if sendFile:
-        net.enpacket("bbbbig")
-        sendFile = 0
+        if sendFile:
+            print("Sending File")
+            time.sleep(0.2)
+
+            for packet in net.enpacket("bbbbig"):
+                net.send(socks[0], packet)
+            sendFile = 0
+
+            print("File sent")
+
+        time.sleep(1)
+        print(".")
+except KeyboardInterrupt:
+    for sock in socks:
+        sock.close()

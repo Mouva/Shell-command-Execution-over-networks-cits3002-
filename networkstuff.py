@@ -26,10 +26,12 @@ import socket, os, select, queue
 
 socks = []
 readqueue = []
+writequeue = []
 HEADER_SIZE = 7 + 1 + 64 + 64 + 64
 PACKET_SIZE = 1024
 FOOTER_SIZE = 0
 DATA_SIZE = PACKET_SIZE - HEADER_SIZE - FOOTER_SIZE
+DEFAULT_PORT = 6666
 
 
 class packet:
@@ -39,12 +41,14 @@ class packet:
         self.filesize = int(filesize).to_bytes(64, "little")
         self.offset = int(offset).to_bytes(64, "little")
 
-        self.data = bytes(data)
+        if type(data) == str:
+            self.data = data.encode("utf-8")
+        elif type(data) == bytes:
+            self.data = data
 
     def asBytes(self):
-        datasize = [7, 1, 64, 64, 64, DATA_SIZE]
+        datasize = [1, 64, 64, 64, DATA_SIZE]
         data = [
-            chr(1) * 7,
             self.control,
             self.filename,
             self.filesize,
@@ -52,7 +56,7 @@ class packet:
             self.data,
         ]
 
-        pack = b""
+        pack = b"\x01" * 7
 
         for size, param in zip(datasize, data):
             pack += slackfill(param, size)
@@ -60,7 +64,8 @@ class packet:
         return pack
 
     def send(self, s):
-        pass
+        s.settimeout(30)
+        s.sendall(self.asBytes())
 
     @staticmethod
     def unpacket(pack):
@@ -113,17 +118,19 @@ def slackfill(data, target):
     return data + bytes(target - len(data))
 
 
-def start_server(host="", port=6666):
+def start_server(host="", port=DEFAULT_PORT):
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     s.bind((host, port))
     s.listen(10)
     c, address = s.accept()
 
-    socks.append(s)
-    readqueue.append(queue.Queue(maxsize=(PACKET_SIZE * 2) - 1))
+    socks.append(c)
+    writequeue.append(queue.Queue())
+
+    return socks
 
 
-def start_client(hosts, port=6666):
+def start_client(hosts, port=DEFAULT_PORT):
     hostNames = []
 
     for host in hosts:
@@ -139,33 +146,48 @@ def start_client(hosts, port=6666):
         s.settimeout(10)
         s.connect(host)
         socks.append(s)
-        readqueue.append(queue.Queue(maxsize=(PACKET_SIZE * 2) - 1))
+        writequeue.append(queue.Queue())
+        # readqueue.append(queue.Queue(maxsize=(PACKET_SIZE * 2) - 1))
+
+    return socks
 
 
 def poll(callback):
 
     # for sock in socks
-    read, write, exception = select.select(socks, [], [])
+    read, write, exception = select.select(socks, socks, [], 10)
 
-    for sock, rq in zip(socks, readqueue):
-        if sock in read:
+    # print(read, write)
 
-            for pack in buffer(sock):
-                callback(packet.unpacket(pack))
+    for sock in read:
+        for pack in buffer(sock):
+            callback(packet.unpacket(pack))
+
+    for sock in write:
+        wq = writequeue[socks.index(sock)]
+        while not wq.empty():
+
+            pack = wq.get()
+            pack.send(sock)
 
 
 def buffer(sock):
     buf = sock.recv(PACKET_SIZE)
-    while True:
+    buffering = True
+    while buffering:
         if b"\x01" in buf:
             pos = buf.index(b"\x01" * 7)
-            if pos + PACKET_SIZE <= len(buffer):
+            if pos + PACKET_SIZE <= len(buf):
                 yield buf[pos : pos + PACKET_SIZE]
             else:
                 more = sock.recv(PACKET_SIZE)
                 if not more:
-                    break
+                    buffering = False
                 else:
                     buf += more
     if buf:
         yield buf
+
+
+def send(sock, packet):
+    writequeue[socks.index(sock)].put(packet)

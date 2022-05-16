@@ -1,12 +1,19 @@
 import networkstuff as net
+import time
 
-
-net.start_server()
+socks = net.start_server()
 
 
 def incomingPacket(packet):
     print(packet.filename, packet.data)
 
 
-while True:
-    net.poll(incomingPacket)
+try:
+    while True:
+        net.poll(incomingPacket)
+
+        time.sleep(1)
+        print(".")
+except KeyboardInterrupt:
+    for sock in socks:
+        sock.close()
