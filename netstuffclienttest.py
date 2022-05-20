@@ -20,6 +20,7 @@ try:
             time.sleep(0.2)
 
             for packet in net.enpacket("bbbbig"):
+                print(packet.asBytes())
                 net.send(socks[0], packet)
             sendFile = 0
 

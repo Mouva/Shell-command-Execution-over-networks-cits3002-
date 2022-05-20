@@ -22,6 +22,7 @@
 
 # Data, the rest
 
+from re import S
 import socket, os, select, queue
 
 socks = []
@@ -32,14 +33,15 @@ PACKET_SIZE = 1024
 FOOTER_SIZE = 0
 DATA_SIZE = PACKET_SIZE - HEADER_SIZE - FOOTER_SIZE
 DEFAULT_PORT = 6666
+BLOCKING_TIME = 10
 
 
 class packet:
     def __init__(self, control, filename, filesize, offset, data):
-        self.control = int(control).to_bytes(1, "little")
-        self.filename = filename.encode("utf-8")
-        self.filesize = int(filesize).to_bytes(64, "little")
-        self.offset = int(offset).to_bytes(64, "little")
+        self.control = int(control)
+        self.filename = filename
+        self.filesize = int(filesize)
+        self.offset = int(offset)
 
         if type(data) == str:
             self.data = data.encode("utf-8")
@@ -49,10 +51,10 @@ class packet:
     def asBytes(self):
         datasize = [1, 64, 64, 64, DATA_SIZE]
         data = [
-            self.control,
-            self.filename,
-            self.filesize,
-            self.offset,
+            int(self.control).to_bytes(1, "little"),
+            self.filename.encode("utf-8"),
+            int(self.filesize).to_bytes(64, "little"),
+            int(self.offset).to_bytes(64, "little"),
             self.data,
         ]
 
@@ -64,23 +66,20 @@ class packet:
         return pack
 
     def send(self, s):
-        s.settimeout(30)
+        s.settimeout(BLOCKING_TIME)
         s.sendall(self.asBytes())
 
     @staticmethod
     def unpacket(pack):
-        filesize = int.from_bytes(pack[72:136], "little")
-        offset = int.from_bytes(pack[137:201], "little")
+        control = int(pack[7])
+        filename = pack[8:72].decode("utf-8").strip("\x00")
+        filesize = int.from_bytes(pack[72:136].lstrip(b"\x00"), "little")
+        offset = int.from_bytes(pack[136:200].lstrip(b"\x00"), "little")
+        data = pack[
+            200 : HEADER_SIZE + (filesize - offset)
+        ]  # Trim any excess nulls from data
 
-        return packet(
-            pack[7],
-            pack[8:72].decode("utf-8").strip("\x00"),
-            filesize,
-            offset,
-            pack[
-                202 : HEADER_SIZE + (filesize - offset) - 1
-            ],  # Trim any excess nulls from data
-        )
+        return packet(control, filename, filesize, offset, data)
 
 
 # The enpackulator (Read a file into packet objects)
@@ -126,6 +125,8 @@ def start_server(host="", port=DEFAULT_PORT):
 
     socks.append(c)
     writequeue.append(queue.Queue())
+    readqueue.append(b"")
+    # readqueue.append(queue.Queue(maxsize=PACKET_SIZE * 1.5))
 
     return socks
 
@@ -147,7 +148,7 @@ def start_client(hosts, port=DEFAULT_PORT):
         s.connect(host)
         socks.append(s)
         writequeue.append(queue.Queue())
-        # readqueue.append(queue.Queue(maxsize=(PACKET_SIZE * 2) - 1))
+        readqueue.append(b"")
 
     return socks
 
@@ -160,8 +161,44 @@ def poll(callback):
     # print(read, write)
 
     for sock in read:
-        for pack in buffer(sock):
-            callback(packet.unpacket(pack))
+        si = socks.index(sock)
+        # for pack in buffer(sock):
+        #     callback(packet.unpacket(pack))
+        # while not readqueue[sockindex].full():
+        #     sock.setblocking(0)
+        #     incoming = sock.recv(1)
+        #     sock.setblocking(BLOCKING_TIME)
+        #     if incoming:
+        #         readqueue[sockindex].put(incoming)
+        #     else:
+        #         break
+
+        # while readqueue[sockindex].qsize() >= PACKET_SIZE:
+        #     print("BBBBCBBCBBCBBBCBBCBBCCCBBCBCBBBBC")
+        #     if readqueue[sockindex].get() == b"\x01":
+        #         pack = b"\x01"
+        #         for byte in range(PACKET_SIZE - 1):
+        #             pack += readqueue[sockindex].get()
+        #         print("AAAAAAABABABABBdaddyBABBBBAAABBBAAAAA")
+        #         callback(packet.unpacket(pack))
+
+        readqueue[si] += sock.recv(PACKET_SIZE)
+
+        while len(readqueue[si]) >= PACKET_SIZE:
+            if b"\x01" in readqueue[si]:
+                packStart = readqueue[si].index(b"\x01")
+
+                if PACKET_SIZE + packStart <= len(readqueue[si]):
+                    callback(
+                        packet.unpacket(
+                            readqueue[si][packStart : packStart + PACKET_SIZE]
+                        )
+                    )
+                    readqueue[si] = readqueue[si][packStart + PACKET_SIZE :]
+                else:
+                    readqueue[si] += sock.recv(PACKET_SIZE)
+            else:
+                readqueue[si] = b""
 
     for sock in write:
         wq = writequeue[socks.index(sock)]

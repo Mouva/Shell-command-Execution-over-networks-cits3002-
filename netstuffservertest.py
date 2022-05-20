@@ -5,7 +5,9 @@ socks = net.start_server()
 
 
 def incomingPacket(packet):
-    print(packet.filename, packet.data)
+    # print(packet.filename, packet.filesize, packet.offset, packet.data.decode("utf-8"))
+    if packet.control:
+        net.write_packet(packet)
 
 
 try:
