@@ -22,7 +22,7 @@
 
 # Data, the rest
 
-from re import S
+# from re import S
 import socket, os, select, queue
 
 socks = []
@@ -34,6 +34,10 @@ FOOTER_SIZE = 0
 DATA_SIZE = PACKET_SIZE - HEADER_SIZE - FOOTER_SIZE
 DEFAULT_PORT = 6666
 BLOCKING_TIME = 10
+
+
+def sockets():
+    return socks
 
 
 class packet:
@@ -82,6 +86,24 @@ class packet:
         return packet(control, filename, filesize, offset, data)
 
 
+class remoteProcess:
+    def __init__(self, id, command):
+        self.id = id
+        self.command = command
+
+        self.candidates = []
+
+        self.query()
+
+    def query(self):
+        for sock in socks:
+            pack = packet(0, "", self.id, 0, self.command)
+            send(pack)
+
+    def candidate(self, sock, pack):
+        self.candidates.append([pack.offset, sock])
+
+
 # The enpackulator (Read a file into packet objects)
 def enpacket(filename):
     packets = []  # Keeps whole file in memory... could be more efficient
@@ -128,7 +150,7 @@ def start_server(host="", port=DEFAULT_PORT):
     readqueue.append(b"")
     # readqueue.append(queue.Queue(maxsize=PACKET_SIZE * 1.5))
 
-    return socks
+    # return socks
 
 
 def start_client(hosts, port=DEFAULT_PORT):
@@ -150,7 +172,7 @@ def start_client(hosts, port=DEFAULT_PORT):
         writequeue.append(queue.Queue())
         readqueue.append(b"")
 
-    return socks
+    # return socks
 
 
 def poll(callback):
@@ -208,22 +230,22 @@ def poll(callback):
             pack.send(sock)
 
 
-def buffer(sock):
-    buf = sock.recv(PACKET_SIZE)
-    buffering = True
-    while buffering:
-        if b"\x01" in buf:
-            pos = buf.index(b"\x01" * 7)
-            if pos + PACKET_SIZE <= len(buf):
-                yield buf[pos : pos + PACKET_SIZE]
-            else:
-                more = sock.recv(PACKET_SIZE)
-                if not more:
-                    buffering = False
-                else:
-                    buf += more
-    if buf:
-        yield buf
+# def buffer(sock):
+#     buf = sock.recv(PACKET_SIZE)
+#     buffering = True
+#     while buffering:
+#         if b"\x01" in buf:
+#             pos = buf.index(b"\x01" * 7)
+#             if pos + PACKET_SIZE <= len(buf):
+#                 yield buf[pos : pos + PACKET_SIZE]
+#             else:
+#                 more = sock.recv(PACKET_SIZE)
+#                 if not more:
+#                     buffering = False
+#                 else:
+#                     buf += more
+#     if buf:
+#         yield buf
 
 
 def send(sock, packet):
