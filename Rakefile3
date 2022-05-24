@@ -1,12 +1,12 @@
 # A typical Rakefile
 
-PORT  = 3000
-HOSTS = localhost
+PORT  = 6666
+HOSTS = 192.168.1.129
 
 actionset1:
-    echo starting actionset1
-    ls -la
+    remote-echo remote actionset1
+    echo local actionset 1
 
 actionset2:
-    echo starting actionset2
-    fortune | cowsay
+    remote-echo starting actionset2
+    echo local actionset2

@@ -76,8 +76,7 @@ class packet:
 
     def send(self, s=None):
         s = s or self.socket
-        s.settimeout(BLOCKING_TIME)
-        s.sendall(self.asBytes())
+        writequeue[socks.index(s)].put(self)
 
     @staticmethod
     def unpacket(pack, sock=None):
@@ -85,9 +84,14 @@ class packet:
         filename = pack[8:72].decode("utf-8").strip("\x00")
         filesize = int.from_bytes(pack[72:136].lstrip(b"\x00"), "little")
         offset = int.from_bytes(pack[136:200].lstrip(b"\x00"), "little")
-        data = pack[
-            200 : HEADER_SIZE + (filesize - offset)
-        ]  # Trim any excess nulls from data
+
+        if control == 2:
+            # Trim any excess nulls from data
+            # (while keeping nulls that were in the original file)
+            data = pack[200 : HEADER_SIZE + (filesize - offset)]
+        else:
+            # Indiscriminately strip nulls
+            data = pack[200:].strip(b"\x00")
 
         return packet(control, filename, filesize, offset, data, sock)
 
@@ -113,17 +117,19 @@ class remoteProcess:
         if len(self.candidates) == len(socks):
             self.run()
 
-
     def run(self):
+        # Take candidate with lowest system usage
         self.candidates.sort(key=lambda p: p[0])
-        self.socket = self.candidates.pop(0)[1] # Take candidate with lowest system usage
+        self.socket = self.candidates.pop(0)[1]
         self.candidates = None
 
-        for requirement in self.requirements:
-            for pack in enpacket(requirement):
-                pack.send(self.socket)
+        if self.requirements:
+            for requirement in self.requirements:
+                for pack in enpacket(requirement):
+                    pack.send(self.socket)
 
-        packet(CONTROL_COMMAND, "", self.id, 0, self.command).send(self.socket)
+        pack = packet(CONTROL_COMMAND, "", self.id, 0, self.command.encode("utf-8"))
+        pack.send(self.socket)
         self.running = True
 
 
@@ -178,10 +184,10 @@ def start_client(hosts, port=DEFAULT_PORT):
     hostNames = []
 
     for host in hosts:
-        hostName = host.split(":")
+        hostName = host.strip().split(":")
 
         if len(hostName) == 1:
-            hostName.append(port)
+            hostName.append(int(port))
 
         hostNames.append(tuple(hostName))
 
@@ -211,11 +217,12 @@ def poll(callback):
                 packStart = readqueue[si].index(b"\x01")
 
                 if PACKET_SIZE + packStart <= len(readqueue[si]):
-                    callback(
-                        packet.unpacket(
-                            readqueue[si][packStart : packStart + PACKET_SIZE], sock
-                        )
+                    incoming = packet.unpacket(
+                        readqueue[si][packStart : packStart + PACKET_SIZE], sock
                     )
+                    callback(incoming)
+
+                    # print(incoming.asBytes())
                     readqueue[si] = readqueue[si][packStart + PACKET_SIZE :]
                 else:
                     readqueue[si] += sock.recv(PACKET_SIZE)
@@ -225,9 +232,13 @@ def poll(callback):
     for sock in write:
         wq = writequeue[socks.index(sock)]
         while not wq.empty():
+            outgoing = wq.get().asBytes()
+            sock.settimeout(BLOCKING_TIME)
+            # print(outgoing)
+            sock.sendall(outgoing)
 
-            pack = wq.get()
-            pack.send(sock)
+            # pack = wq.get()
+            # pack.send(sock)
 
 
 # def buffer(sock):
