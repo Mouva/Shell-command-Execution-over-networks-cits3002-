@@ -22,7 +22,6 @@
 
 # Data, the rest
 
-# from re import S
 import socket, os, select, queue
 
 socks = []
@@ -41,11 +40,12 @@ def sockets():
 
 
 class packet:
-    def __init__(self, control, filename, filesize, offset, data):
+    def __init__(self, control, filename, filesize, offset, data, sock=None):
         self.control = int(control)
         self.filename = filename
         self.filesize = int(filesize)
         self.offset = int(offset)
+        self.socket = sock
 
         if type(data) == str:
             self.data = data.encode("utf-8")
@@ -69,12 +69,13 @@ class packet:
 
         return pack
 
-    def send(self, s):
+    def send(self, s=None):
+        s = s or self.socket
         s.settimeout(BLOCKING_TIME)
         s.sendall(self.asBytes())
 
     @staticmethod
-    def unpacket(pack):
+    def unpacket(pack, sock=None):
         control = int(pack[7])
         filename = pack[8:72].decode("utf-8").strip("\x00")
         filesize = int.from_bytes(pack[72:136].lstrip(b"\x00"), "little")
@@ -83,7 +84,7 @@ class packet:
             200 : HEADER_SIZE + (filesize - offset)
         ]  # Trim any excess nulls from data
 
-        return packet(control, filename, filesize, offset, data)
+        return packet(control, filename, filesize, offset, data, sock)
 
 
 class remoteProcess:
@@ -100,8 +101,15 @@ class remoteProcess:
             pack = packet(0, "", self.id, 0, self.command)
             send(pack)
 
-    def candidate(self, sock, pack):
-        self.candidates.append([pack.offset, sock])
+    def candidate(self, pack):
+        self.candidates.append([pack.offset, pack.socket])
+
+    def run(self):
+        self.candidates.sort(key=lambda p: p[0])
+
+        sock = self.candidates.pop(0)[1]
+
+        packet(1, "", self.id, 0, self.command).send(sock)
 
 
 # The enpackulator (Read a file into packet objects)
@@ -213,7 +221,7 @@ def poll(callback):
                 if PACKET_SIZE + packStart <= len(readqueue[si]):
                     callback(
                         packet.unpacket(
-                            readqueue[si][packStart : packStart + PACKET_SIZE]
+                            readqueue[si][packStart : packStart + PACKET_SIZE], sock
                         )
                     )
                     readqueue[si] = readqueue[si][packStart + PACKET_SIZE :]
