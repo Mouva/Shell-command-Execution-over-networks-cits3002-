@@ -18,6 +18,7 @@ memUsageRE = re.compile(
 
 # Gets current usage statistics and returns a single averaged int
 def getSysPerf():
+    # Run top to determine system usage
     perfProc = subprocess.run(["top", "-l", "1", "-n", "0"], capture_output=True)
 
     if not perfProc.returncode:

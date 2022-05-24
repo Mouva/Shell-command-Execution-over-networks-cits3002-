@@ -1,46 +1,30 @@
+# 22973676, Adrian Bedford
+# 22989775, Oliver Lynch
+
 import networkstuff as net
 import sys, subprocess
 
-socks = net.start_client(["localhost"])
+net.start_client(["localhost"])
 processes = []
 remote_processes = []
 
 
-def incomingPacket(packet):
-    print(packet.filename, packet.data)
-
+def incoming_packet(packet):
     match packet.control:
         case 0:  # command cost
-            pass
+            for process in remote_processes:
+                if process.id == packet.filesize:
+                    process.candidate(packet)
         case 1:  # command
             pass
         case 2:  # file transfer
             net.write_packet(packet)
-
-
-# sendFile = 1
-
-# try:
-#     while True:
-#         net.poll(incomingPacket)
-
-#         if sendFile:
-#             print("Sending File")
-#             time.sleep(0.2)
-
-#             for packet in net.enpacket("bbbbig"):
-#                 print(packet.asBytes())
-#                 net.send(socks[0], packet)
-#             sendFile = 0
-
-#             print("File sent")
-
-#         time.sleep(1)
-#         print(".")
-# except KeyboardInterrupt:
-#     for sock in socks:
-#         sock.close()
-
+        case 3:  # command result
+            completed_process = None
+            for process in remote_processes:
+                if process.id == packet.filesize:
+                    completed_process = process
+                remote_processes.remove(completed_process)
 
 def main():
     path = "Rakefile"
@@ -72,7 +56,7 @@ def main():
             elif line.startswith("\t"):
                 actionsets[currentset].append([line[1:], False])
             else:
-                print("scomo lost lol")
+                print("Could not parse line: ", line)
 
     net.start_client(hosts, port)
 
@@ -84,7 +68,9 @@ def execute(actionset):
     for i, command in enumerate(actionset):
         if command[1]:  # Run Remotely
 
-            # Determine best server to run command on
+            # Determine best server to run command on, 
+            # the remote process class will determine the 
+            # correct server and run the command automatically
             remote_processes.append(net.remoteProcess(i, command[0]))
 
         else:  # Run Locally
@@ -105,7 +91,7 @@ def execute(actionset):
 
 
 def poll():
-    net.poll(incomingPacket)
+    net.poll(incoming_packet)
 
     for process in processes:
         if process.poll():  # Process is done

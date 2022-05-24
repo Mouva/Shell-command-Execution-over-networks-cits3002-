@@ -13,8 +13,10 @@
 # \x01
 # Control 1
 # Specifies packet type
-# - 0 for command
-# - 1 for file
+# - 0 for system load query
+# - 1 for command
+# - 2 for file transfer
+# - 3 for command return
 
 # Filename 64
 # Filesize 64
@@ -33,6 +35,9 @@ FOOTER_SIZE = 0
 DATA_SIZE = PACKET_SIZE - HEADER_SIZE - FOOTER_SIZE
 DEFAULT_PORT = 6666
 BLOCKING_TIME = 10
+CONTROL_QUERY = 0
+CONTROL_COMMAND = 1
+CONTROL_FILE = 2
 
 
 def sockets():
@@ -88,9 +93,11 @@ class packet:
 
 
 class remoteProcess:
-    def __init__(self, id, command):
+    def __init__(self, id, command, requirements=None):
         self.id = id
         self.command = command
+        self.requirements = requirements
+        self.running = False
 
         self.candidates = []
 
@@ -98,18 +105,26 @@ class remoteProcess:
 
     def query(self):
         for sock in socks:
-            pack = packet(0, "", self.id, 0, self.command)
-            send(pack)
+            packet(CONTROL_QUERY, "", self.id, 0, self.command).send(sock)
 
     def candidate(self, pack):
         self.candidates.append([pack.offset, pack.socket])
 
+        if len(self.candidates) == len(socks):
+            self.run()
+
+
     def run(self):
         self.candidates.sort(key=lambda p: p[0])
+        self.socket = self.candidates.pop(0)[1] # Take candidate with lowest system usage
+        self.candidates = None
 
-        sock = self.candidates.pop(0)[1]
+        for requirement in self.requirements:
+            for pack in enpacket(requirement):
+                pack.send(self.socket)
 
-        packet(1, "", self.id, 0, self.command).send(sock)
+        packet(CONTROL_COMMAND, "", self.id, 0, self.command).send(self.socket)
+        self.running = True
 
 
 # The enpackulator (Read a file into packet objects)
@@ -122,7 +137,7 @@ def enpacket(filename):
         curpos = 0
 
         while pack := f.read(DATA_SIZE):
-            packets.append(packet(1, filename, filesize, curpos, pack))
+            packets.append(packet(CONTROL_FILE, filename, filesize, curpos, pack))
             curpos = f.tell()
 
     return packets
@@ -158,8 +173,6 @@ def start_server(host="", port=DEFAULT_PORT):
     readqueue.append(b"")
     # readqueue.append(queue.Queue(maxsize=PACKET_SIZE * 1.5))
 
-    # return socks
-
 
 def start_client(hosts, port=DEFAULT_PORT):
     hostNames = []
@@ -180,8 +193,6 @@ def start_client(hosts, port=DEFAULT_PORT):
         writequeue.append(queue.Queue())
         readqueue.append(b"")
 
-    # return socks
-
 
 def poll(callback):
 
@@ -192,25 +203,6 @@ def poll(callback):
 
     for sock in read:
         si = socks.index(sock)
-        # for pack in buffer(sock):
-        #     callback(packet.unpacket(pack))
-        # while not readqueue[sockindex].full():
-        #     sock.setblocking(0)
-        #     incoming = sock.recv(1)
-        #     sock.setblocking(BLOCKING_TIME)
-        #     if incoming:
-        #         readqueue[sockindex].put(incoming)
-        #     else:
-        #         break
-
-        # while readqueue[sockindex].qsize() >= PACKET_SIZE:
-        #     print("BBBBCBBCBBCBBBCBBCBBCCCBBCBCBBBBC")
-        #     if readqueue[sockindex].get() == b"\x01":
-        #         pack = b"\x01"
-        #         for byte in range(PACKET_SIZE - 1):
-        #             pack += readqueue[sockindex].get()
-        #         print("AAAAAAABABABABBdaddyBABBBBAAABBBAAAAA")
-        #         callback(packet.unpacket(pack))
 
         readqueue[si] += sock.recv(PACKET_SIZE)
 
@@ -256,5 +248,5 @@ def poll(callback):
 #         yield buf
 
 
-def send(sock, packet):
-    writequeue[socks.index(sock)].put(packet)
+# def send(sock, packet):
+#     writequeue[socks.index(sock)].put(packet)
