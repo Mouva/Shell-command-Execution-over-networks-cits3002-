@@ -55,7 +55,7 @@ def main():
             elif line.startswith("HOSTS"):
                 hosts = line.split("=")[-1].strip().split(" ")
             elif line.replace("    ", "\t").startswith("\t\trequires"):
-                actionsets[currentset][-1].append(line[10:].split(" "))
+                actionsets[currentset][-1].append(line.strip().split(" ")[1:])
             elif line.replace("    ", "\t").startswith("\tremote-"):
                 actionsets[currentset].append([line.strip()[7:], True])
             elif line.replace("    ", "\t").startswith("\t"):
@@ -67,6 +67,7 @@ def main():
     net.start_client(hosts, port)
 
     for actionset in actionsets:
+        print(actionset)
         execute(actionset)
 
 
@@ -77,7 +78,11 @@ def execute(actionset):
             # Determine best server to run command on,
             # the remote process class will determine the
             # correct server and run the command automatically
-            remote_processes.append(net.remoteProcess(i, command[0]))
+            remote_processes.append(
+                net.remote_process(
+                    i, command[0], command[2] if len(command) > 2 else None
+                )
+            )
 
         else:  # Run Locally
             processes.append(
@@ -117,7 +122,6 @@ if __name__ == "__main__":
     try:
         main()
     except KeyboardInterrupt:
-        print("Goodbye. ")
+        print("\nGoodbye. ")
     finally:
         net.close()
-

@@ -1,13 +1,14 @@
 # A typical Rakefile
+#
 
 PORT  = 6666
-HOSTS = 192.168.16.119
+HOSTS = localhost
 
 actionset1:
     remote-echo remote actionset1
-        requires remotefiletest
+        requires 1.txt 2.txt 3.txt
     echo local actionset 1
 
 actionset2:
-    remote-echo starting actionset2
+    remote-echo remote actionset2
     echo local actionset2

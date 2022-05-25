@@ -2,7 +2,7 @@
 # 22989775, Oliver Lynch
 
 
-# Header 193
+# Header 200
 # ----------------
 # \x01
 # \x01
@@ -96,7 +96,7 @@ class packet:
         return packet(control, filename, filesize, offset, data, sock)
 
 
-class remoteProcess:
+class remote_process:
     def __init__(self, id, command, requirements=None):
         self.id = id
         self.command = command
@@ -125,6 +125,7 @@ class remoteProcess:
 
         if self.requirements:
             for requirement in self.requirements:
+                print(f"Sending required file: {requirement}")
                 for pack in enpacket(requirement):
                     pack.send(self.socket)
 
@@ -177,7 +178,6 @@ def start_server(host="", port=DEFAULT_PORT):
     socks.append(c)
     writequeue.append(queue.Queue())
     readqueue.append(b"")
-    # readqueue.append(queue.Queue(maxsize=PACKET_SIZE * 1.5))
 
 
 def start_client(hosts, port=DEFAULT_PORT):
@@ -200,24 +200,21 @@ def start_client(hosts, port=DEFAULT_PORT):
             writequeue.append(queue.Queue())
             readqueue.append(b"")
         except (TimeoutError, ConnectionRefusedError) as e:
-            print(f'An error occured while connecting to {host}, {type(e)}')
-    
+            print(f"An error occured while connecting to {host}, {type(e)}")
+
     if not socks:
-        raise TimeoutError('No specified server could be connected to. ')
+        raise TimeoutError("No specified server could be connected to. ")
 
 
 def poll(callback):
-
-    # for sock in socks
     read, write, exception = select.select(socks, socks, [], 10)
-
-    # print(read, write)
 
     for sock in read:
         si = socks.index(sock)
 
         readqueue[si] += sock.recv(PACKET_SIZE)
 
+        # Buffer incoming bytestream into packet objects
         while len(readqueue[si]) >= PACKET_SIZE:
             if b"\x01" in readqueue[si]:
                 packStart = readqueue[si].index(b"\x01")
@@ -228,46 +225,21 @@ def poll(callback):
                     )
                     callback(incoming)
 
-                    # print(incoming.asBytes())
                     readqueue[si] = readqueue[si][packStart + PACKET_SIZE :]
                 else:
                     readqueue[si] += sock.recv(PACKET_SIZE)
             else:
                 readqueue[si] = b""
 
+    # Send any outgoing data to writable sockets
     for sock in write:
         wq = writequeue[socks.index(sock)]
         while not wq.empty():
             outgoing = wq.get().asBytes()
             sock.settimeout(BLOCKING_TIME)
-            # print(outgoing)
             sock.sendall(outgoing)
 
-            # pack = wq.get()
-            # pack.send(sock)
 
 def close():
     for sock in socks:
         sock.close()
-
-
-# def buffer(sock):
-#     buf = sock.recv(PACKET_SIZE)
-#     buffering = True
-#     while buffering:
-#         if b"\x01" in buf:
-#             pos = buf.index(b"\x01" * 7)
-#             if pos + PACKET_SIZE <= len(buf):
-#                 yield buf[pos : pos + PACKET_SIZE]
-#             else:
-#                 more = sock.recv(PACKET_SIZE)
-#                 if not more:
-#                     buffering = False
-#                 else:
-#                     buf += more
-#     if buf:
-#         yield buf
-
-
-# def send(sock, packet):
-#     writequeue[socks.index(sock)].put(packet)
