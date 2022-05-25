@@ -4,7 +4,7 @@
 
 import networkstuff as net
 import systemstuff as sus
-import time, subprocess
+import subprocess
 
 processes = {}
 process_sock = {}
@@ -62,4 +62,9 @@ def poll():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        print("Goodbye. ")
+    finally:
+        net.close()

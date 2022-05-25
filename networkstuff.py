@@ -194,10 +194,16 @@ def start_client(hosts, port=DEFAULT_PORT):
     for host in hostNames:
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         s.settimeout(10)
-        s.connect(host)
-        socks.append(s)
-        writequeue.append(queue.Queue())
-        readqueue.append(b"")
+        try:
+            s.connect(host)
+            socks.append(s)
+            writequeue.append(queue.Queue())
+            readqueue.append(b"")
+        except (TimeoutError, ConnectionRefusedError) as e:
+            print(f'An error occured while connecting to {host}, {type(e)}')
+    
+    if not socks:
+        raise TimeoutError('No specified server could be connected to. ')
 
 
 def poll(callback):
@@ -239,6 +245,10 @@ def poll(callback):
 
             # pack = wq.get()
             # pack.send(sock)
+
+def close():
+    for sock in socks:
+        sock.close()
 
 
 # def buffer(sock):
